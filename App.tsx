@@ -25,12 +25,11 @@ const App: React.FC = () => {
     }
   };
 
-  // FIX: Changed icon type from JSX.Element to React.ReactElement to resolve "Cannot find namespace 'JSX'" error.
   const TabButton = ({ tab, label, icon }: { tab: Tab; label: string; icon: React.ReactElement }) => (
     <button
       onClick={() => setActiveTab(tab)}
-      className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
-        ${activeTab === tab ? 'bg-gray-800 text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+      className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400
+        ${activeTab === tab ? 'bg-gray-800 text-teal-400 border-b-2 border-teal-400' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
     >
       {icon}
       <span className="hidden sm:inline">{label}</span>
@@ -41,7 +40,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col font-sans">
       <header className="bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-700/50 shadow-lg">
         <div className="container mx-auto px-4 py-3">
-          <h1 className="text-2xl sm:text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-indigo-400 to-cyan-400">
+          <h1 className="text-2xl sm:text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">
             OmniTech AI Sales & Support Agent
           </h1>
         </div>
@@ -60,10 +59,6 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
-
-       <footer className="text-center py-4 text-xs text-gray-500">
-          <p>Powered by Google Gemini. For demonstration purposes only.</p>
-      </footer>
     </div>
   );
 };

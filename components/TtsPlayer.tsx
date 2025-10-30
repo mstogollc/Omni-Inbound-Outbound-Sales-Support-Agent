@@ -61,7 +61,7 @@ export const TtsPlayer: React.FC = () => {
     return (
         <div className="h-[75vh] flex flex-col p-4 sm:p-6 bg-gray-800">
             <div className="mb-4">
-                <h2 className="text-xl font-bold text-indigo-400">Text-to-Speech Player</h2>
+                <h2 className="text-xl font-bold text-teal-400">Text-to-Speech Player</h2>
                 <p className="text-sm text-gray-400">
                     Convert text into natural-sounding speech with Gemini.
                 </p>
@@ -72,13 +72,13 @@ export const TtsPlayer: React.FC = () => {
                     onChange={(e) => setText(e.target.value)}
                     placeholder="Enter text to be spoken..."
                     disabled={isLoading}
-                    className="w-full flex-1 bg-gray-900 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition resize-none"
+                    className="w-full flex-1 bg-gray-900 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition resize-none"
                 />
                 {error && <p className="text-red-400 text-sm text-center">{error}</p>}
                 <button
                     onClick={handleSpeak}
                     disabled={isLoading || !text.trim()}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-indigo-700 transition font-semibold"
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 text-white rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-teal-700 transition font-semibold"
                 >
                     {isLoading ? (
                          <>

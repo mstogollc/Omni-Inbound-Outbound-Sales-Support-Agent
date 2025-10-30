@@ -88,7 +88,7 @@ export const GroundedChat: React.FC = () => {
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                          {msg.role === 'model' && (
-                            <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
                                 <SparklesIcon className="w-5 h-5 text-white" />
                             </div>
                         )}
@@ -102,7 +102,7 @@ export const GroundedChat: React.FC = () => {
                                     <ul className="text-xs space-y-1">
                                         {msg.sources.map((source, i) => (
                                             <li key={i}>
-                                                <a href={source.uri} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline break-all">
+                                                <a href={source.uri} target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:underline break-all">
                                                     [{source.type === 'web' ? 'Web' : 'Map'}] {source.title || source.uri}
                                                 </a>
                                             </li>
@@ -120,7 +120,7 @@ export const GroundedChat: React.FC = () => {
                 ))}
                 {isLoading && (
                      <div className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
                             <SparklesIcon className="w-5 h-5 text-white" />
                         </div>
                         <div className="p-3 rounded-lg bg-gray-700 flex items-center gap-2">
@@ -139,12 +139,12 @@ export const GroundedChat: React.FC = () => {
                     onChange={(e) => setUserInput(e.target.value)}
                     placeholder="Ask a question..."
                     disabled={isLoading}
-                    className="flex-1 w-full bg-gray-700 text-white placeholder-gray-400 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                    className="flex-1 w-full bg-gray-700 text-white placeholder-gray-400 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                 />
                 <button
                     type="submit"
                     disabled={isLoading || !userInput.trim()}
-                    className="p-3 bg-indigo-600 text-white rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-indigo-700 transition"
+                    className="p-3 bg-teal-600 text-white rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-teal-700 transition"
                 >
                     <PaperAirplaneIcon className="w-6 h-6" />
                 </button>
