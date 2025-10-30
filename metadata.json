@@ -1,0 +1,8 @@
+{
+  "name": "OmniTech AI Agent",
+  "description": "An advanced AI Sales and Support Agent powered by Gemini. Features real-time voice conversations, task automation, and grounded information retrieval.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
