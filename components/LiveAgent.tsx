@@ -1,22 +1,15 @@
-
-import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { decode, decodeAudioData, encode } from '../utils/audio';
-import { SYSTEM_PROMPT, FUNCTION_DECLARATIONS } from '../services/geminiService';
-import { Cog6ToothIcon, InformationCircleIcon, PhoneIcon, StopIcon, UserIcon, SparklesIcon } from './Icons';
-
-interface Transcription {
-    text: string;
-    source: 'user' | 'model';
-}
+import { SessionPromiseRef, Transcription } from '../types';
+import { Cog6ToothIcon, SparklesIcon, StopIcon, UserIcon, PhoneIcon } from './Icons';
 
 export const LiveAgent: React.FC = () => {
-    const [isSessionActive, setIsSessionActive] = useState(false);
+    const [isActive, setIsActive] = useState(false);
     const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
     const [notifications, setNotifications] = useState<string[]>([]);
-    const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
-
-    const sessionPromise = useRef<Promise<LiveSession> | null>(null);
+    
+    const sessionPromise: SessionPromiseRef = useRef(null);
     const inputAudioContext = useRef<AudioContext | null>(null);
     const outputAudioContext = useRef<AudioContext | null>(null);
     const mediaStream = useRef<MediaStream | null>(null);
@@ -30,121 +23,80 @@ export const LiveAgent: React.FC = () => {
     const nextStartTime = useRef(0);
     const audioPlaybackQueue = useRef(new Set<AudioBufferSourceNode>());
 
-    useEffect(() => {
-        return () => {
-            endSession();
-        };
+    const addNotification = useCallback((message: string) => {
+        setNotifications(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${message}`]);
     }, []);
 
+    const endCall = useCallback(() => {
+        sessionPromise.current?.then(s => s.close());
+        sessionPromise.current = null;
+        scriptProcessor.current?.disconnect();
+        mediaStreamSource.current?.disconnect();
+        mediaStream.current?.getTracks().forEach(t => t.stop());
+        inputAudioContext.current?.close().catch(() => {});
+        outputAudioContext.current?.close().catch(() => {});
+        setIsActive(false);
+    }, []);
+
+    useEffect(() => { return () => { endCall(); }; }, [endCall]);
+    
     useEffect(() => {
-        if (isAutoScrollEnabled && transcriptionContainerRef.current) {
+        if (transcriptionContainerRef.current) {
             transcriptionContainerRef.current.scrollTop = transcriptionContainerRef.current.scrollHeight;
         }
-    }, [transcriptions, isAutoScrollEnabled]);
+    }, [transcriptions]);
 
+    const startCall = async () => {
+        if (!process.env.API_KEY) {
+            addNotification("Gemini API Key is not configured.");
+            return;
+        }
 
-    const addNotification = (message: string) => {
-        setNotifications(prev => [...prev.slice(-4), message]); // Keep last 5 notifications
-    };
-
-    const handleToolCall = (functionCall: any) => {
-        const { name, args } = functionCall;
-        const argsString = JSON.stringify(args, null, 2);
-        addNotification(`Tool Call: ${name}\nArguments: ${argsString}`);
-
-        // In a real app, you would execute the function here.
-        // For this demo, we'll just send a confirmation back.
-        const result = `Function ${name} executed successfully.`;
-
-        sessionPromise.current?.then((session) => {
-            session.sendToolResponse({
-                functionResponses: {
-                    id: functionCall.id,
-                    name: functionCall.name,
-                    response: { result: result },
-                }
-            });
-        });
-    };
-
-    const startSession = async () => {
-        addNotification('Starting session...');
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaStream.current = stream;
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-            
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-
             setTranscriptions([]);
-            currentInputTranscription.current = '';
-            currentOutputTranscription.current = '';
+            setNotifications(['Attempting to establish connection...']);
 
             sessionPromise.current = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-                    systemInstruction: SYSTEM_PROMPT,
-                    tools: [{ functionDeclarations: FUNCTION_DECLARATIONS }],
-                    inputAudioTranscription: {},
-                    outputAudioTranscription: {},
+                    systemInstruction: "You are a helpful and friendly AI assistant. Keep your responses concise and clear.",
+                    inputAudioTranscription: {}, outputAudioTranscription: {},
                 },
                 callbacks: {
                     onopen: () => {
-                        addNotification('Session opened. Microphone is active.');
-                        setIsSessionActive(true);
-
+                        addNotification('Connection established.');
+                        setIsActive(true);
                         mediaStreamSource.current = inputAudioContext.current!.createMediaStreamSource(stream);
                         scriptProcessor.current = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
-
-                        scriptProcessor.current.onaudioprocess = (audioProcessingEvent) => {
-                            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                            const int16 = new Int16Array(inputData.length);
-                            for (let i = 0; i < inputData.length; i++) {
-                                int16[i] = inputData[i] * 32768;
-                            }
-                            const pcmBlob: Blob = {
-                                data: encode(new Uint8Array(int16.buffer)),
-                                mimeType: 'audio/pcm;rate=16000',
-                            };
-                            sessionPromise.current?.then((session) => {
-                                session.sendRealtimeInput({ media: pcmBlob });
-                            });
+                        scriptProcessor.current.onaudioprocess = (e) => {
+                            const inputData = e.inputBuffer.getChannelData(0);
+                            const pcmBlob: Blob = { data: encode(new Uint8Array(new Int16Array(inputData.map(v => v * 32768)).buffer)), mimeType: 'audio/pcm;rate=16000' };
+                            sessionPromise.current?.then((s) => s.sendRealtimeInput({ media: pcmBlob }));
                         };
-
                         mediaStreamSource.current.connect(scriptProcessor.current);
                         scriptProcessor.current.connect(inputAudioContext.current!.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
-                        if (message.serverContent?.inputTranscription) {
-                            currentInputTranscription.current += message.serverContent.inputTranscription.text;
-                        }
-                        if (message.serverContent?.outputTranscription) {
-                            currentOutputTranscription.current += message.serverContent.outputTranscription.text;
-                        }
-
-                        if (message.toolCall) {
-                            message.toolCall.functionCalls.forEach(handleToolCall);
-                        }
-                        
+                        if (message.serverContent?.inputTranscription) currentInputTranscription.current += message.serverContent.inputTranscription.text;
+                        if (message.serverContent?.outputTranscription) currentOutputTranscription.current += message.serverContent.outputTranscription.text;
                         if (message.serverContent?.turnComplete) {
                             const fullInput = currentInputTranscription.current.trim();
                             const fullOutput = currentOutputTranscription.current.trim();
+                            const newTurns: Transcription[] = [];
+                            if(fullInput) newTurns.push({ text: fullInput, source: 'user' });
+                            if(fullOutput) newTurns.push({ text: fullOutput, source: 'model' });
 
-                            setTranscriptions(prev => {
-                                let newTranscriptions = [...prev];
-                                if (fullInput) newTranscriptions.push({ text: fullInput, source: 'user' });
-                                if (fullOutput) newTranscriptions.push({ text: fullOutput, source: 'model' });
-                                return newTranscriptions;
-                            });
-
+                            if(newTurns.length > 0) setTranscriptions(p => [...p, ...newTurns]);
                             currentInputTranscription.current = '';
                             currentOutputTranscription.current = '';
                         }
-                        
                         const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
                         if (base64Audio) {
                             nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current!.currentTime);
@@ -152,121 +104,49 @@ export const LiveAgent: React.FC = () => {
                             const source = outputAudioContext.current!.createBufferSource();
                             source.buffer = audioBuffer;
                             source.connect(outputAudioContext.current!.destination);
-                            
-                            source.addEventListener('ended', () => {
-                                audioPlaybackQueue.current.delete(source);
-                            });
-                            
+                            source.addEventListener('ended', () => audioPlaybackQueue.current.delete(source));
                             source.start(nextStartTime.current);
                             nextStartTime.current += audioBuffer.duration;
                             audioPlaybackQueue.current.add(source);
                         }
-                        
-                        if (message.serverContent?.interrupted) {
-                            addNotification('Model speech interrupted.');
-                            for (const source of audioPlaybackQueue.current.values()) {
-                                source.stop();
-                                audioPlaybackQueue.current.delete(source);
-                            }
-                            nextStartTime.current = 0;
-                        }
                     },
-                    onerror: (e: ErrorEvent) => {
-                        addNotification(`Error: ${e.message}`);
-                        console.error(e);
-                        endSession();
-                    },
-                    onclose: () => {
-                        addNotification('Session closed.');
-                        setIsSessionActive(false);
-                    },
+                    onerror: (e: ErrorEvent) => { addNotification(`Error: ${e.message}`); endCall(); },
+                    onclose: () => { addNotification('Session ended.'); endCall(); },
                 },
             });
-
-        } catch (error) {
-            addNotification(`Failed to start session: ${error}`);
-            console.error("Session start error:", error);
-            endSession();
-        }
+        } catch (error) { addNotification(`Failed to start session: ${(error as Error).message}`); endCall(); }
     };
-
-    const endSession = () => {
-        if (sessionPromise.current) {
-            sessionPromise.current.then(session => session.close());
-            sessionPromise.current = null;
-        }
-        
-        scriptProcessor.current?.disconnect();
-        scriptProcessor.current = null;
-        mediaStreamSource.current?.disconnect();
-        mediaStreamSource.current = null;
-        
-        mediaStream.current?.getTracks().forEach(track => track.stop());
-        mediaStream.current = null;
-
-        inputAudioContext.current?.close();
-        outputAudioContext.current?.close();
-        
-        setIsSessionActive(false);
-    };
-
-    const TranscriptionBubble: React.FC<{ transcription: Transcription }> = ({ transcription }) => (
-        <div className={`flex items-start gap-3 ${transcription.source === 'user' ? 'justify-end' : ''}`}>
-            {transcription.source === 'model' && (
-                <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
-                    <SparklesIcon className="w-5 h-5 text-white" />
-                </div>
-            )}
-            <div className={`p-3 rounded-lg max-w-lg ${transcription.source === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>
-                <p className="text-sm">{transcription.text}</p>
-            </div>
-            {transcription.source === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
-                    <UserIcon className="w-5 h-5 text-white" />
-                </div>
-            )}
-        </div>
-    );
 
     return (
-        <div className="h-[75vh] flex flex-col p-4 bg-gray-800">
-            <div ref={transcriptionContainerRef} className="flex-1 overflow-y-auto mb-4 space-y-4 p-2">
-                {transcriptions.map((t, i) => <TranscriptionBubble key={i} transcription={t} />)}
-            </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-                <div className="flex items-center gap-4">
-                    {!isSessionActive ? (
-                        <button onClick={startSession} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition">
-                            <PhoneIcon /> Start Call
-                        </button>
-                    ) : (
-                        <button onClick={endSession} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition">
-                            <StopIcon /> End Call
-                        </button>
-                    )}
-                    <div className={`flex items-center gap-2 text-sm ${isSessionActive ? 'text-green-400' : 'text-gray-400'}`}>
-                        <span className={`w-3 h-3 rounded-full ${isSessionActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
-                        {isSessionActive ? 'Active' : 'Inactive'}
+        <div className="bg-gray-800/70 p-4 rounded-xl shadow-lg flex flex-col">
+            <h3 className="text-lg font-semibold text-white mb-3">Live AI Agent</h3>
+            <div ref={transcriptionContainerRef} className="flex-1 overflow-y-auto mb-4 space-y-3 p-2 bg-gray-900/50 rounded-lg min-h-[250px] max-h-[250px]">
+                {transcriptions.map((t, i) => (
+                     <div key={i} className={`flex items-start gap-2 ${t.source === 'user' ? 'justify-end' : ''}`}>
+                        {t.source === 'model' && <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0"><SparklesIcon className="w-4 h-4 text-white" /></div>}
+                        <div className={`p-2.5 rounded-lg max-w-sm text-sm ${t.source === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>{t.text}</div>
+                        {t.source === 'user' && <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0"><UserIcon className="w-4 h-4 text-white" /></div>}
                     </div>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <input
-                        type="checkbox"
-                        id="autoScroll"
-                        checked={isAutoScrollEnabled}
-                        onChange={(e) => setIsAutoScrollEnabled(e.target.checked)}
-                        className="w-4 h-4 text-teal-600 bg-gray-700 border-gray-600 rounded focus:ring-teal-500"
-                    />
-                    <label htmlFor="autoScroll" className="text-sm text-gray-400 cursor-pointer">Auto-scroll</label>
+                ))}
+            </div>
+             <div className="flex items-center justify-between pt-3 border-t border-gray-700">
+                {!isActive ? (
+                    <button onClick={startCall} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition">
+                        <PhoneIcon /> Start Session
+                    </button>
+                ) : (
+                    <button onClick={endCall} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition">
+                        <StopIcon /> End Session
+                    </button>
+                )}
+                <div className={`flex items-center gap-2 text-sm ${isActive ? 'text-green-400' : 'text-gray-400'}`}>
+                    <span className={`w-3 h-3 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
+                    {isActive ? 'Active' : 'Inactive'}
                 </div>
             </div>
-
-            <div className="mt-4 p-3 bg-gray-900/50 rounded-lg min-h-[100px] text-xs font-mono text-gray-400 space-y-1 overflow-y-auto">
-                <p className="font-bold text-gray-300 flex items-center gap-1"><Cog6ToothIcon /> System Notifications:</p>
-                {notifications.length > 0 ? notifications.map((n, i) => (
-                    <p key={i} className="whitespace-pre-wrap">&gt; {n}</p>
-                )) : <p>&gt; Waiting for session to start...</p>}
+            <div className="mt-3 p-2 bg-gray-900/50 rounded-lg text-xs font-mono text-gray-400 space-y-1 h-[100px] overflow-y-auto">
+                <p className="font-bold text-gray-300 flex items-center gap-1"><Cog6ToothIcon className="w-4 h-4"/> System:</p>
+                {notifications.length > 0 ? notifications.map((n, i) => <p key={i} className="whitespace-pre-wrap">&gt; {n}</p>) : <p>&gt; Waiting to start session...</p>}
             </div>
         </div>
     );

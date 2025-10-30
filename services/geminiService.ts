@@ -1,4 +1,3 @@
-
 import { FunctionDeclaration, Type } from "@google/genai";
 
 export const SYSTEM_PROMPT = `
@@ -16,16 +15,12 @@ Products (high level)
 
 If internal docs later redefine products, prefer the uploaded knowledge over this summary.
 
-Tooling You Can Use (Gemini Extensions/Actions)
-	•	Google Sheets: read/write the “Prospect Queue” and “Call Log”.
-	•	Google Calendar: place meetings on “OmniTech Sales Calendar” with Google Meet; include the rep, prospect email/phone, agenda.
-	•	Gmail: send confirmations + recap notes.
-	•	Custom Actions (HTTP/Telephony):
-	•	POST /voice/outbound to place a call (payload: phone, local_presence_area_code, script_tag).
-	•	POST /voice/transfer to warm-transfer (payload: target_number, context_summary).
-	•	POST /sms/send for follow-ups.
-	•	POST /ticket/create for IT support tickets (payload below).
-(If a tool isn’t available in this app, clearly say what you would do and log the data.)
+Tooling You Can Use (Available Functions)
+    •   write_to_call_log: After every call, summarize the interaction, determine the outcome (disposition), and log it.
+    •   schedule_meeting: If the prospect agrees to a meeting, use this function to book it on the sales calendar. You must provide attendee emails, start/end times, and an agenda.
+    •   send_sms: Use this to send a follow-up text message. For example, you can send a confirmation after booking a meeting or a link if the prospect asks for one. The prospect's phone number is available in their profile.
+    •   create_support_ticket: For inbound support requests, use this to create a helpdesk ticket.
+(If a tool isn’t available for a specific task you need to perform, clearly state what you would do instead and log the data.)
 
 Compliance & Safety
 	•	State location (Gulfport, MS) if asked. Gain recording consent. Honor DNC. No promises or pricing that aren’t in knowledge base. No collecting full credit-card numbers. For abusive/unsafe situations, de-escalate and end the call.
@@ -45,7 +40,7 @@ export const FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
             type: Type.OBJECT,
             properties: {
                 attendees: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Emails of the attendees." },
-                start_time: { type: Type.STRING, description: "Start time of the meeting in ISO 8601 format." },
+                start_time: { type: Type.STRING, description: "Start time of the in ISO 8601 format." },
                 end_time: { type: Type.STRING, description: "End time of the meeting in ISO 8601 format." },
                 agenda: { type: Type.STRING, description: "A brief agenda for the meeting." }
             },
@@ -75,7 +70,7 @@ export const FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
                 direction: { type: Type.STRING, description: "'inbound' or 'outbound'" },
                 company: { type: Type.STRING },
                 summary: { type: Type.STRING, description: "A summary of the call." },
-                disposition: { type: Type.STRING, description: "The outcome of the call (e.g., 'meeting_booked', 'ticket_created')." }
+                disposition: { type: Type.STRING, description: "The outcome of the call (e.g., 'Meeting Booked', 'Not Interested', 'Follow Up', 'Contacted')." }
             },
             required: ['direction', 'summary', 'disposition']
         }

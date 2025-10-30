@@ -1,98 +1,89 @@
-
 import React, { useState, useRef } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { decode, decodeAudioData } from '../utils/audio';
-import { SpeakerWaveIcon } from './Icons';
 
 export const TtsPlayer: React.FC = () => {
-    const [text, setText] = useState('Hello! I am an AI assistant powered by Gemini. You can type any text here and I will read it aloud for you.');
+    const [text, setText] = useState('Hello! I am an AI voice from OmniTech. How can I help you today?');
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const audioContextRef = useRef<AudioContext | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleSpeak = async () => {
+    const audioContext = useRef<AudioContext | null>(null);
+    const audioSource = useRef<AudioBufferSourceNode | null>(null);
+
+    const handleGenerateAndPlay = async () => {
         if (!text.trim() || isLoading) return;
 
         setIsLoading(true);
-        setError('');
+        setError(null);
+
+        // Stop any currently playing audio
+        if (audioSource.current) {
+            audioSource.current.stop();
+        }
+        if (!audioContext.current || audioContext.current.state === 'closed') {
+            audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        }
 
         try {
-            if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            }
+            if (!process.env.API_KEY) throw new Error("API Key not configured.");
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
                 contents: [{ parts: [{ text: text }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: { voiceName: 'Kore' },
-                        },
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
                     },
                 },
             });
-
+            
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) {
-                const audioBuffer = await decodeAudioData(
-                    decode(base64Audio),
-                    audioContextRef.current,
-                    24000,
-                    1,
-                );
-                const source = audioContextRef.current.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(audioContextRef.current.destination);
-                source.start();
-            } else {
+            if (!base64Audio) {
                 throw new Error("No audio data received from API.");
             }
+
+            const audioBuffer = await decodeAudioData(
+                decode(base64Audio),
+                audioContext.current,
+                24000,
+                1
+            );
+            
+            const source = audioContext.current.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.current.destination);
+            source.start();
+            audioSource.current = source;
+
         } catch (err) {
-            console.error("Error with TTS:", err);
-            setError("Failed to generate speech. Please try again.");
+            setError((err as Error).message || "An unknown error occurred.");
         } finally {
             setIsLoading(false);
         }
     };
-
+    
     return (
-        <div className="h-[75vh] flex flex-col p-4 sm:p-6 bg-gray-800">
-            <div className="mb-4">
-                <h2 className="text-xl font-bold text-teal-400">Text-to-Speech Player</h2>
-                <p className="text-sm text-gray-400">
-                    Convert text into natural-sounding speech with Gemini.
-                </p>
-            </div>
-            <div className="flex flex-col gap-4 flex-1">
+        <div className="bg-gray-800/70 p-4 rounded-xl shadow-lg">
+            <h3 className="text-lg font-semibold text-white mb-3">Text-to-Speech Player</h3>
+            <div className="space-y-3">
                 <textarea
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    placeholder="Enter text to be spoken..."
+                    placeholder="Enter text to generate audio..."
+                    className="w-full h-28 bg-gray-900/50 text-white placeholder-gray-500 p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                     disabled={isLoading}
-                    className="w-full flex-1 bg-gray-900 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition resize-none"
                 />
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
                 <button
-                    onClick={handleSpeak}
+                    onClick={handleGenerateAndPlay}
+                    className="w-full bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-700 transition disabled:bg-teal-800 disabled:cursor-not-allowed"
                     disabled={isLoading || !text.trim()}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 text-white rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-teal-700 transition font-semibold"
                 >
-                    {isLoading ? (
-                         <>
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                            <span>Generating...</span>
-                         </>
-                    ) : (
-                        <>
-                            <SpeakerWaveIcon className="w-6 h-6" />
-                            <span>Speak</span>
-                        </>
-                    )}
+                    {isLoading ? 'Generating Audio...' : 'Generate & Play'}
                 </button>
             </div>
+            {error && <div className="mt-3 p-3 bg-red-900/50 text-red-300 rounded-lg text-sm">{error}</div>}
         </div>
     );
 };
