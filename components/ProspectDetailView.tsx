@@ -83,7 +83,6 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
     const [callLogs, setCallLogs] = useState<CallLog[]>(initialCallLogs);
     const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
     const [pendingLog, setPendingLog] = useState<{ summary: string; disposition: Prospect['status'] } | null>(null);
-    const [isSummarizing, setIsSummarizing] = useState(false);
     
     const sessionPromise: SessionPromiseRef = useRef(null);
     const inputAudioContext = useRef<AudioContext | null>(null);
@@ -146,7 +145,7 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         const { name, args } = functionCall;
         
         if (name === 'write_to_call_log') {
-            addNotification(`AI finished call. Review log.`);
+            addNotification(`AI finished call. Please review and confirm the log.`);
             closeSession();
             setPendingLog({ summary: args.summary, disposition: args.disposition });
             setIsConfirmationVisible(true);
@@ -186,34 +185,14 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         }
     }, [transcriptions]);
 
-    const handleEndCallClick = async () => {
+    const handleEndCallClick = () => {
         if (!isCallActive) return;
-        const currentTranscriptions = [...transcriptions]; // Capture current state
         closeSession();
 
-        if (currentTranscriptions.length > 0) {
-            setIsSummarizing(true);
-            try {
-                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-                const transcriptText = currentTranscriptions.map(t => `${t.source === 'user' ? 'Prospect' : 'Agent'}: ${t.text}`).join('\n');
-                const prompt = `Based on the call transcript, provide a summary and a disposition from: 'Pending', 'Contacted', 'Meeting Booked', 'Not Interested', 'Follow Up'. Respond ONLY with a valid JSON object: {"summary": "your summary", "disposition": "chosen disposition"}`;
-
-                const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
-                const jsonText = result.text.replace(/```json|```/g, '').trim();
-                const parsed = JSON.parse(jsonText);
-                setPendingLog({ summary: parsed.summary, disposition: parsed.disposition });
-            } catch (e) {
-                console.error("Failed to summarize call:", e);
-                addNotification("Error summarizing. Please log manually.");
-                setPendingLog({ summary: '', disposition: 'Contacted' });
-            } finally {
-                setIsSummarizing(false);
-                setIsConfirmationVisible(true);
-            }
-        } else {
-            setPendingLog({ summary: 'Short call, no transcript recorded.', disposition: 'Contacted' });
-            setIsConfirmationVisible(true);
-        }
+        // When user ends call, prompt them to enter summary and disposition manually.
+        const summary = transcriptions.length > 0 ? '' : 'Short call, no transcript recorded.';
+        setPendingLog({ summary, disposition: 'Contacted' });
+        setIsConfirmationVisible(true);
     };
 
     const handleManualLogClick = (disposition: Prospect['status']) => {
@@ -337,8 +316,8 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                                 <PhoneArrowUpRightIcon /> Start Call
                             </button>
                         ) : (
-                            <button onClick={handleEndCallClick} disabled={isSummarizing} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition disabled:bg-red-800/50 disabled:cursor-not-allowed">
-                                <StopIcon /> {isSummarizing ? 'Summarizing...' : 'End Call'}
+                            <button onClick={handleEndCallClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition">
+                                <StopIcon /> End Call
                             </button>
                         )}
                         <div className={`flex items-center gap-2 text-sm ${isCallActive ? 'text-green-400' : 'text-gray-400'}`}>

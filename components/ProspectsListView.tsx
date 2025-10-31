@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Prospect } from '../types';
 
 interface ProspectsListViewProps {
@@ -19,25 +19,87 @@ const ProspectStatusBadge: React.FC<{ status: Prospect['status'] }> = ({ status 
 
 export const ProspectsListView: React.FC<ProspectsListViewProps> = ({ prospects, onSelectProspect }) => {
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<Prospect['status'] | 'All'>('All');
+    const [sortBy, setSortBy] = useState<'lastContacted' | 'contact' | 'company'>('lastContacted');
 
-    const filteredProspects = prospects.filter(p => 
-        p.contact.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.company.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredAndSortedProspects = useMemo(() => {
+        let processedProspects = [...prospects];
+
+        // 1. Filter by status
+        if (statusFilter !== 'All') {
+            processedProspects = processedProspects.filter(p => p.status === statusFilter);
+        }
+
+        // 2. Filter by search term
+        if (searchTerm.trim()) {
+            const lowercasedSearchTerm = searchTerm.toLowerCase();
+            processedProspects = processedProspects.filter(p =>
+                p.contact.toLowerCase().includes(lowercasedSearchTerm) ||
+                p.company.toLowerCase().includes(lowercasedSearchTerm)
+            );
+        }
+
+        // 3. Sort
+        processedProspects.sort((a, b) => {
+            switch (sortBy) {
+                case 'contact':
+                    return a.contact.localeCompare(b.contact);
+                case 'company':
+                    return a.company.localeCompare(b.company);
+                case 'lastContacted':
+                default:
+                    const dateA = a.lastContacted ? new Date(a.lastContacted).getTime() : 0;
+                    const dateB = b.lastContacted ? new Date(b.lastContacted).getTime() : 0;
+                    return dateB - dateA; // Newest first
+            }
+        });
+        
+        return processedProspects;
+    }, [prospects, statusFilter, searchTerm, sortBy]);
+
 
     return (
         <div>
             <h1 className="text-3xl font-bold text-white mb-2">Prospects</h1>
             <p className="text-gray-400 mb-6">Manage and contact your list of potential leads.</p>
             
-            <div className="mb-4">
+            <div className="flex flex-wrap items-center gap-4 mb-4">
                 <input
                     type="text"
                     placeholder="Search by name or company..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full max-w-sm bg-gray-800 text-white placeholder-gray-500 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                    className="w-full sm:w-auto flex-grow max-w-sm bg-gray-800 text-white placeholder-gray-500 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                 />
+                <div className="flex items-center gap-2">
+                    <label htmlFor="status-filter" className="text-sm text-gray-400">Status:</label>
+                    <select
+                        id="status-filter"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as Prospect['status'] | 'All')}
+                        className="bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition appearance-none"
+                    >
+                        <option value="All">All</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Contacted">Contacted</option>
+                        <option value="Meeting Booked">Meeting Booked</option>
+                        <option value="Not Interested">Not Interested</option>
+                        <option value="Follow Up">Follow Up</option>
+                    </select>
+                </div>
+                 <div className="flex items-center gap-2">
+                    <label htmlFor="sort-by" className="text-sm text-gray-400">Sort by:</label>
+                    <select
+                        id="sort-by"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as 'lastContacted' | 'contact' | 'company')}
+                        className="bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition appearance-none"
+                    >
+                        <option value="lastContacted">Last Contacted</option>
+                        <option value="contact">Contact Name</option>
+                        <option value="company">Company Name</option>
+                    </select>
+                </div>
             </div>
 
             <div className="bg-gray-800/70 rounded-xl shadow-lg overflow-hidden">
@@ -53,7 +115,7 @@ export const ProspectsListView: React.FC<ProspectsListViewProps> = ({ prospects,
                             </tr>
                         </thead>
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
-                            {filteredProspects.map(prospect => (
+                            {filteredAndSortedProspects.map(prospect => (
                                 <tr key={prospect.id} onClick={() => onSelectProspect(prospect.id)} className="hover:bg-gray-700/50 cursor-pointer transition-colors">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm font-medium text-white">{prospect.contact}</div>

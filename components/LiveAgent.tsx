@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { decode, decodeAudioData, encode } from '../utils/audio';
 import { SessionPromiseRef, Transcription } from '../types';
-import { Cog6ToothIcon, SparklesIcon, StopIcon, UserIcon, PhoneIcon } from './Icons';
+import { SYSTEM_PROMPT, FUNCTION_DECLARATIONS } from '../services/geminiService';
+import { Cog6ToothIcon, SparklesIcon, StopIcon, UserIcon, PhoneArrowUpRightIcon } from './Icons';
 
 export const LiveAgent: React.FC = () => {
     const [isActive, setIsActive] = useState(false);
@@ -28,6 +29,7 @@ export const LiveAgent: React.FC = () => {
     }, []);
 
     const endCall = useCallback(() => {
+        if (!isActive) return;
         sessionPromise.current?.then(s => s.close());
         sessionPromise.current = null;
         scriptProcessor.current?.disconnect();
@@ -36,7 +38,45 @@ export const LiveAgent: React.FC = () => {
         inputAudioContext.current?.close().catch(() => {});
         outputAudioContext.current?.close().catch(() => {});
         setIsActive(false);
-    }, []);
+        addNotification('Session ended.');
+    }, [isActive, addNotification]);
+
+    const handleToolCall = useCallback(async (functionCall: any) => {
+        const { name, args } = functionCall;
+        addNotification(`AI is attempting to use tool: ${name}`);
+
+        // In a real app, you would have an API service call here.
+        // For now, we just simulate the action and send a response back to the model.
+        let resultMessage = `Function ${name} executed successfully.`;
+        try {
+            switch(name) {
+                case 'create_support_ticket':
+                    console.log('Simulating support ticket creation:', args);
+                    addNotification(`Support ticket created for ${args.caller_name}.`);
+                    break;
+                case 'schedule_meeting':
+                     console.log('Simulating meeting schedule:', args);
+                     addNotification(`Meeting tentatively scheduled for ${args.attendees.join(', ')}.`);
+                     break;
+                case 'write_to_call_log':
+                    console.log('Simulating write to general inbound log:', args);
+                    addNotification(`Call logged to general inbound history.`);
+                    break;
+                default:
+                    resultMessage = `Function ${name} is recognized but not implemented in this UI.`;
+            }
+        } catch (error) {
+            resultMessage = `Function ${name} failed: ${(error as Error).message}`;
+            addNotification(resultMessage);
+        }
+        
+        sessionPromise.current?.then((session) => {
+            session.sendToolResponse({
+                functionResponses: { id: functionCall.id, name: functionCall.name, response: { result: resultMessage } }
+            });
+        });
+    }, [addNotification]);
+
 
     useEffect(() => { return () => { endCall(); }; }, [endCall]);
     
@@ -66,12 +106,13 @@ export const LiveAgent: React.FC = () => {
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    systemInstruction: "You are a helpful and friendly AI assistant. Keep your responses concise and clear.",
+                    systemInstruction: SYSTEM_PROMPT,
+                    tools: [{ functionDeclarations: FUNCTION_DECLARATIONS }],
                     inputAudioTranscription: {}, outputAudioTranscription: {},
                 },
                 callbacks: {
                     onopen: () => {
-                        addNotification('Connection established.');
+                        addNotification('Connection established. Ready for inbound calls.');
                         setIsActive(true);
                         mediaStreamSource.current = inputAudioContext.current!.createMediaStreamSource(stream);
                         scriptProcessor.current = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
@@ -86,6 +127,7 @@ export const LiveAgent: React.FC = () => {
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.serverContent?.inputTranscription) currentInputTranscription.current += message.serverContent.inputTranscription.text;
                         if (message.serverContent?.outputTranscription) currentOutputTranscription.current += message.serverContent.outputTranscription.text;
+                        if (message.toolCall) message.toolCall.functionCalls.forEach(handleToolCall);
                         if (message.serverContent?.turnComplete) {
                             const fullInput = currentInputTranscription.current.trim();
                             const fullOutput = currentOutputTranscription.current.trim();
@@ -111,16 +153,16 @@ export const LiveAgent: React.FC = () => {
                         }
                     },
                     onerror: (e: ErrorEvent) => { addNotification(`Error: ${e.message}`); endCall(); },
-                    onclose: () => { addNotification('Session ended.'); endCall(); },
+                    onclose: () => { addNotification('Session ended by server.'); endCall(); },
                 },
             });
         } catch (error) { addNotification(`Failed to start session: ${(error as Error).message}`); endCall(); }
     };
 
     return (
-        <div className="bg-gray-800/70 p-4 rounded-xl shadow-lg flex flex-col">
-            <h3 className="text-lg font-semibold text-white mb-3">Live AI Agent</h3>
-            <div ref={transcriptionContainerRef} className="flex-1 overflow-y-auto mb-4 space-y-3 p-2 bg-gray-900/50 rounded-lg min-h-[250px] max-h-[250px]">
+        <div className="bg-gray-800/70 p-4 rounded-xl shadow-lg flex flex-col h-full">
+            <h3 className="text-lg font-semibold text-white mb-3">OmniTech Inbound Agent</h3>
+            <div ref={transcriptionContainerRef} className="flex-1 overflow-y-auto mb-4 space-y-3 p-2 bg-gray-900/50 rounded-lg min-h-[250px]">
                 {transcriptions.map((t, i) => (
                      <div key={i} className={`flex items-start gap-2 ${t.source === 'user' ? 'justify-end' : ''}`}>
                         {t.source === 'model' && <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0"><SparklesIcon className="w-4 h-4 text-white" /></div>}
@@ -132,7 +174,7 @@ export const LiveAgent: React.FC = () => {
              <div className="flex items-center justify-between pt-3 border-t border-gray-700">
                 {!isActive ? (
                     <button onClick={startCall} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition">
-                        <PhoneIcon /> Start Session
+                        <PhoneArrowUpRightIcon /> Go Live for Inbound Calls
                     </button>
                 ) : (
                     <button onClick={endCall} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition">
@@ -144,9 +186,9 @@ export const LiveAgent: React.FC = () => {
                     {isActive ? 'Active' : 'Inactive'}
                 </div>
             </div>
-            <div className="mt-3 p-2 bg-gray-900/50 rounded-lg text-xs font-mono text-gray-400 space-y-1 h-[100px] overflow-y-auto">
+            <div className="mt-3 p-2 bg-gray-900/50 rounded-lg text-xs font-mono text-gray-400 space-y-1 h-[120px] overflow-y-auto">
                 <p className="font-bold text-gray-300 flex items-center gap-1"><Cog6ToothIcon className="w-4 h-4"/> System:</p>
-                {notifications.length > 0 ? notifications.map((n, i) => <p key={i} className="whitespace-pre-wrap">&gt; {n}</p>) : <p>&gt; Waiting to start session...</p>}
+                {notifications.length > 0 ? notifications.map((n, i) => <p key={i} className="whitespace-pre-wrap">&gt; {n}</p>) : <p>&gt; Waiting to go live...</p>}
             </div>
         </div>
     );
