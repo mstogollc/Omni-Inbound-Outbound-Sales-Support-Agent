@@ -3,7 +3,7 @@ import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { decode, decodeAudioData, encode } from '../utils/audio';
 import { SYSTEM_PROMPT, FUNCTION_DECLARATIONS } from '../services/geminiService';
 import { apiService } from '../services/apiService';
-import { Cog6ToothIcon, PhoneArrowUpRightIcon, StopIcon, UserIcon, SparklesIcon } from './Icons';
+import { Cog6ToothIcon, PhoneArrowUpRightIcon, StopIcon, UserIcon, SparklesIcon, PhoneMissedCallIcon } from './Icons';
 import { Prospect, CallLog, Transcription, SessionPromiseRef } from '../types';
 import { LocalIntelligence } from './LocalIntelligence';
 
@@ -14,7 +14,6 @@ interface ProspectDetailViewProps {
     onBack: () => void;
 }
 
-// Confirmation Dialog Component
 const CallEndConfirmationDialog: React.FC<{
     isOpen: boolean;
     logData: { summary: string; disposition: Prospect['status'] };
@@ -75,15 +74,32 @@ const CallEndConfirmationDialog: React.FC<{
     );
 };
 
+const CallStatusIndicator: React.FC<{ statusText: string }> = ({ statusText }) => {
+    return (
+        <div className="bg-gray-900/50 rounded-t-lg p-2 flex items-center justify-center gap-2">
+            <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
+            </span>
+            <span className="text-sm font-semibold text-teal-300">{statusText}</span>
+        </div>
+    );
+};
+
 
 export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect, initialCallLogs, onDataRefresh, onBack }) => {
-    const [isCallActive, setIsCallActive] = useState(false);
+    const [isAICallActive, setIsAICallActive] = useState(false);
+    const [isManualCallActive, setIsManualCallActive] = useState(false);
+    const [manualNotes, setManualNotes] = useState('');
+    const [callTimer, setCallTimer] = useState(0);
     const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
     const [notifications, setNotifications] = useState<string[]>([]);
     const [callLogs, setCallLogs] = useState<CallLog[]>(initialCallLogs);
     const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
     const [pendingLog, setPendingLog] = useState<{ summary: string; disposition: Prospect['status'] } | null>(null);
+    const [callStatusText, setCallStatusText] = useState('');
     
+    const callTimerIntervalRef = useRef<number | null>(null);
     const sessionPromise: SessionPromiseRef = useRef(null);
     const inputAudioContext = useRef<AudioContext | null>(null);
     const outputAudioContext = useRef<AudioContext | null>(null);
@@ -102,8 +118,8 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         setNotifications(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${message}`]);
     }, []);
 
-    const closeSession = useCallback(() => {
-        if (!isCallActive) return;
+    const closeAISession = useCallback(() => {
+        if (!sessionPromise.current) return;
         sessionPromise.current?.then(s => s.close());
         sessionPromise.current = null;
         scriptProcessor.current?.disconnect();
@@ -111,9 +127,21 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         mediaStream.current?.getTracks().forEach(t => t.stop());
         inputAudioContext.current?.close().catch(() => {});
         outputAudioContext.current?.close().catch(() => {});
-        setIsCallActive(false);
-        addNotification('Call ended.');
-    }, [isCallActive, addNotification]);
+        setIsAICallActive(false);
+        setCallStatusText('');
+        addNotification('AI call ended.');
+    }, [addNotification]);
+
+    useEffect(() => {
+        if (isManualCallActive) {
+            callTimerIntervalRef.current = window.setInterval(() => setCallTimer(prev => prev + 1), 1000);
+        } else {
+            if (callTimerIntervalRef.current) clearInterval(callTimerIntervalRef.current);
+            callTimerIntervalRef.current = null;
+            setCallTimer(0);
+        }
+        return () => { if (callTimerIntervalRef.current) clearInterval(callTimerIntervalRef.current); };
+    }, [isManualCallActive]);
 
     const handleConfirmLog = async (summary: string, disposition: Prospect['status']) => {
         addNotification(`Logging call with disposition: ${disposition}`);
@@ -132,6 +160,7 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         } finally {
             setIsConfirmationVisible(false);
             setPendingLog(null);
+            setTranscriptions([]);
         }
     };
 
@@ -143,10 +172,12 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
 
     const handleToolCall = useCallback(async (functionCall: any) => {
         const { name, args } = functionCall;
+        addNotification(`AI Tool: ${name}`);
+        setCallStatusText('AI is Taking Action...');
         
         if (name === 'write_to_call_log') {
             addNotification(`AI finished call. Please review and confirm the log.`);
-            closeSession();
+            closeAISession();
             setPendingLog({ summary: args.summary, disposition: args.disposition });
             setIsConfirmationVisible(true);
             return;
@@ -156,12 +187,10 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         try {
             switch(name) {
                 case 'schedule_meeting':
-                    addNotification(`Booking meeting for ${args.start_time}`);
                     await apiService.scheduleMeeting(prospect.id, { startTime: args.start_time, agenda: args.agenda });
                     onDataRefresh();
                     break;
                 case 'send_sms':
-                     addNotification(`Sending SMS to ${args.phone_number}`);
                      await apiService.sendSms(args.phone_number, args.message);
                      break;
             }
@@ -175,9 +204,10 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                 functionResponses: { id: functionCall.id, name: functionCall.name, response: { result: resultMessage } }
             });
         });
-    }, [addNotification, prospect.id, onDataRefresh, closeSession]);
+        setCallStatusText('Live Conversation');
+    }, [addNotification, prospect.id, onDataRefresh, closeAISession]);
 
-    useEffect(() => { return () => { closeSession(); }; }, [closeSession]);
+    useEffect(() => { return () => { if (isAICallActive) closeAISession(); }; }, [isAICallActive, closeAISession]);
     
     useEffect(() => {
         if (transcriptionContainerRef.current) {
@@ -185,18 +215,27 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         }
     }, [transcriptions]);
 
-    const handleEndCallClick = () => {
-        if (!isCallActive) return;
-        closeSession();
-
-        // When user ends call, prompt them to enter summary and disposition manually.
-        const summary = transcriptions.length > 0 ? '' : 'Short call, no transcript recorded.';
-        setPendingLog({ summary, disposition: 'Contacted' });
+    const handleEndAICallClick = () => {
+        if (!isAICallActive) return;
+        closeAISession();
+        setPendingLog({ summary: '', disposition: 'Contacted' });
         setIsConfirmationVisible(true);
     };
 
+    const handleStartManualCall = () => {
+        setIsManualCallActive(true);
+        addNotification(`Manual call started. Use your phone to dial ${prospect.phone}.`);
+    };
+
+    const handleEndManualCall = () => {
+        setIsManualCallActive(false);
+        setPendingLog({ summary: manualNotes, disposition: 'Contacted' });
+        setIsConfirmationVisible(true);
+        setManualNotes('');
+    };
+
     const handleManualLogClick = (disposition: Prospect['status']) => {
-        if (isCallActive) {
+        if (isAICallActive || isManualCallActive) {
             addNotification("Please end the active call before logging manually.");
             return;
         }
@@ -204,18 +243,16 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
         setIsConfirmationVisible(true);
     };
 
-
-    const startCall = async () => {
+    const startAICall = async () => {
         if (!process.env.API_KEY) {
-            addNotification("Gemini API Key is not configured.");
+            addNotification("Error: Gemini API Key is not configured in this environment.");
             return;
         }
-
-        addNotification(`Calling ${prospect.contact}...`);
+        addNotification(`Starting AI call to ${prospect.contact}...`);
+        setCallStatusText('Connecting...');
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaStream.current = stream;
-
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -233,7 +270,8 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                 callbacks: {
                     onopen: () => {
                         addNotification('Connection established.');
-                        setIsCallActive(true);
+                        setIsAICallActive(true);
+                        setCallStatusText('Live Conversation');
                         mediaStreamSource.current = inputAudioContext.current!.createMediaStreamSource(stream);
                         scriptProcessor.current = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
                         scriptProcessor.current.onaudioprocess = (e) => {
@@ -256,10 +294,7 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                             const newTurns: Transcription[] = [];
                             if(fullInput) newTurns.push({ text: fullInput, source: 'user' });
                             if(fullOutput) newTurns.push({ text: fullOutput, source: 'model' });
-
-                            if(newTurns.length > 0) {
-                                setTranscriptions(p => [...p, ...newTurns]);
-                            }
+                            if(newTurns.length > 0) setTranscriptions(p => [...p, ...newTurns]);
                             currentInputTranscription.current = '';
                             currentOutputTranscription.current = '';
                         }
@@ -276,14 +311,29 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                             audioPlaybackQueue.current.add(source);
                         }
                     },
-                    onerror: (e: ErrorEvent) => { addNotification(`Error: ${e.message}`); closeSession(); },
-                    onclose: () => { setIsCallActive(false); /* Main teardown handled by closeSession */ },
+                    onerror: (e: ErrorEvent) => {
+                        console.error("Prospect detail view AI call error:", e);
+                        addNotification(`Error: ${e.message || 'An unknown connection error occurred.'}`);
+                        closeAISession();
+                    },
+                    onclose: () => { setIsAICallActive(false); setCallStatusText(''); },
                 },
             });
-        } catch (error) { addNotification(`Failed to start call: ${(error as Error).message}`); closeSession(); }
+        } catch (error) {
+            let errorMessage = "An unknown error occurred. Check browser console for details.";
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else if (error) {
+                errorMessage = String(error);
+            }
+            console.error("Failed to start AI call:", error);
+            addNotification(`Error: ${errorMessage}`);
+            closeAISession();
+        }
     };
 
     const manualLogButtonClasses = "w-full text-center px-3 py-2 text-xs font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed";
+    const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 
     return (
         <div>
@@ -298,31 +348,59 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
             <LocalIntelligence prospect={prospect} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                {/* Calling Interface */}
                 <div className="bg-gray-800/70 p-4 rounded-xl shadow-lg flex flex-col">
-                    <h2 className="text-lg font-semibold text-white mb-3">Live Call</h2>
-                    <div ref={transcriptionContainerRef} className="flex-1 overflow-y-auto mb-4 space-y-3 p-2 bg-gray-900/50 rounded-lg min-h-[300px] max-h-[400px]">
-                        {transcriptions.map((t, i) => (
-                             <div key={i} className={`flex items-start gap-2 ${t.source === 'user' ? 'justify-end' : ''}`}>
-                                {t.source === 'model' && <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0"><SparklesIcon className="w-4 h-4 text-white" /></div>}
-                                <div className={`p-2.5 rounded-lg max-w-sm text-sm ${t.source === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>{t.text}</div>
-                                {t.source === 'user' && <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0"><UserIcon className="w-4 h-4 text-white" /></div>}
+                    <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-lg font-semibold text-white">{isManualCallActive ? 'Manual Call Session' : 'Live Call'}</h2>
+                        {isAICallActive && (
+                            <div className="flex items-center gap-2 text-red-400">
+                                <span className="relative flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                                </span>
+                                <span className="text-sm font-semibold">LIVE</span>
                             </div>
-                        ))}
+                         )}
                     </div>
-                     <div className="flex items-center justify-between pt-3 border-t border-gray-700">
-                        {!isCallActive ? (
-                            <button onClick={startCall} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition">
-                                <PhoneArrowUpRightIcon /> Start Call
-                            </button>
+                    
+                    <div className="flex-1 mb-4 bg-gray-900/50 rounded-lg min-h-[300px] max-h-[400px] flex flex-col">
+                        {isAICallActive && <CallStatusIndicator statusText={callStatusText} />}
+                        {isManualCallActive ? (
+                            <div className="p-2 flex flex-col flex-1">
+                                <p className="text-center font-mono text-2xl text-white py-2">{formatTime(callTimer)}</p>
+                                <textarea
+                                    value={manualNotes}
+                                    onChange={(e) => setManualNotes(e.target.value)}
+                                    placeholder="Take notes here..."
+                                    className="flex-1 w-full bg-transparent text-white p-2 focus:outline-none resize-none"
+                                />
+                            </div>
                         ) : (
-                            <button onClick={handleEndCallClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition">
-                                <StopIcon /> End Call
-                            </button>
+                            <div ref={transcriptionContainerRef} className="overflow-y-auto space-y-3 p-2 flex-1">
+                                {transcriptions.map((t, i) => (
+                                    <div key={i} className={`flex items-start gap-2 ${t.source === 'user' ? 'justify-end' : ''}`}>
+                                        {t.source === 'model' && <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0"><SparklesIcon className="w-4 h-4 text-white" /></div>}
+                                        <div className={`p-2.5 rounded-lg max-w-sm text-sm ${t.source === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>{t.text}</div>
+                                        {t.source === 'user' && <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0"><UserIcon className="w-4 h-4 text-white" /></div>}
+                                    </div>
+                                ))}
+                            </div>
                         )}
-                        <div className={`flex items-center gap-2 text-sm ${isCallActive ? 'text-green-400' : 'text-gray-400'}`}>
-                            <span className={`w-3 h-3 rounded-full ${isCallActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
-                            {isCallActive ? 'Active' : 'Inactive'}
+                    </div>
+
+                     <div className="flex items-center justify-between pt-3 border-t border-gray-700">
+                        {isAICallActive ? (
+                            <button onClick={handleEndAICallClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition"><StopIcon /> End Call & Log Manually</button>
+                        ) : isManualCallActive ? (
+                             <button onClick={handleEndManualCall} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition"><StopIcon /> End Call & Log</button>
+                        ) : (
+                            <div className="flex gap-2">
+                                <button onClick={startAICall} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition"><PhoneArrowUpRightIcon /> Start AI Call</button>
+                                <button onClick={handleStartManualCall} className="flex items-center gap-2 px-4 py-2 bg-sky-600 text-white font-semibold rounded-lg hover:bg-sky-700 transition"><PhoneMissedCallIcon /> Start Manual Call</button>
+                            </div>
+                        )}
+                        <div className={`flex items-center gap-2 text-sm ${(isAICallActive || isManualCallActive) ? 'text-green-400' : 'text-gray-400'}`}>
+                            <span className={`w-3 h-3 rounded-full ${(isAICallActive || isManualCallActive) ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
+                            {(isAICallActive || isManualCallActive) ? 'Active' : 'Inactive'}
                         </div>
                     </div>
                     <div className="mt-3 p-2 bg-gray-900/50 rounded-lg text-xs font-mono text-gray-400 space-y-1 h-[120px] overflow-y-auto">
@@ -337,7 +415,7 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                                 <button
                                     key={status}
                                     onClick={() => handleManualLogClick(status)}
-                                    disabled={isCallActive}
+                                    disabled={isAICallActive || isManualCallActive}
                                     className={manualLogButtonClasses}
                                 >
                                     {status}
@@ -354,16 +432,17 @@ export const ProspectDetailView: React.FC<ProspectDetailViewProps> = ({ prospect
                         {callLogs.length > 0 ? callLogs.map(log => (
                             <details key={log.id} className="bg-gray-900/50 rounded-lg p-3">
                                 <summary className="cursor-pointer text-sm font-semibold text-white">
-                                    Call on {new Date(log.timestamp).toLocaleDateString()} - <span className="font-bold">{log.disposition}</span>
+                                    Call on {new Date(log.timestamp).toLocaleString()} - <span className="font-bold">{log.disposition}</span>
                                 </summary>
                                 <div className="mt-3 pt-3 border-t border-gray-700">
                                     <p className="text-xs text-gray-400 italic mb-2">{log.summary}</p>
                                      {log.meetingDetails && <p className="text-xs text-green-400 mb-2">Meeting booked for {new Date(log.meetingDetails.startTime).toLocaleString()}</p>}
-                                    <h4 className="text-xs font-bold text-gray-300 mb-1">Transcript:</h4>
-                                    <div className="text-xs text-gray-400 space-y-1 max-h-40 overflow-y-auto">
-                                        {log.transcription.map((t,i) => <p key={i}><strong>{t.source === 'model' ? 'Agent' : 'Prospect'}:</strong> {t.text}</p>)}
-                                    </div>
-                                oversight before it's saved to the log.
+                                    {log.transcription && log.transcription.length > 0 && <>
+                                        <h4 className="text-xs font-bold text-gray-300 mb-1">Transcript:</h4>
+                                        <div className="text-xs text-gray-400 space-y-1 max-h-40 overflow-y-auto">
+                                            {log.transcription.map((t,i) => <p key={i}><strong>{t.source === 'model' ? 'Agent' : 'Prospect'}:</strong> {t.text}</p>)}
+                                        </div>
+                                    </>}
                                 </div>
                             </details>
                         )) : <p className="text-sm text-gray-500 text-center mt-8">No call history for this prospect.</p>}

@@ -5,7 +5,7 @@ import { ProspectsListView } from './ProspectsListView';
 import { ProspectDetailView } from './ProspectDetailView';
 import { User, Prospect, CallLog } from '../types';
 import { apiService } from '../services/apiService';
-import { LiveAgentView, GroundedChatView, ComplexQueryView, TtsPlayerView, NetworkTroubleshooterView, ScriptGeneratorView, EmailGeneratorView } from './views';
+import { LiveAgentView, GroundedChatView, ComplexQueryView, TtsPlayerView, NetworkTroubleshooterView, ScriptGeneratorView, EmailGeneratorView, OutboundAgentView } from './views';
 import { ScheduleView } from './ScheduleView';
 
 
@@ -15,6 +15,7 @@ export type View =
     'prospect-detail' |
     'schedule' |
     'live-agent' |
+    'outbound-agent' |
     'research-assistant' |
     'complex-query' |
     'tts-player' |
@@ -65,7 +66,7 @@ export const DashboardLayout: React.FC<{ user: User, onLogout: () => void }> = (
 
         switch (currentView) {
             case 'prospects':
-                return <ProspectsListView prospects={prospects} onSelectProspect={handleSelectProspect} />;
+                return <ProspectsListView prospects={prospects} onSelectProspect={handleSelectProspect} onDataRefresh={fetchData} />;
             case 'prospect-detail':
                 const prospect = prospects.find(p => p.id === selectedProspectId);
                 if (prospect) {
@@ -82,6 +83,8 @@ export const DashboardLayout: React.FC<{ user: User, onLogout: () => void }> = (
                 return <ScheduleView />;
             case 'live-agent':
                 return <LiveAgentView />;
+            case 'outbound-agent':
+                return <OutboundAgentView />;
             case 'research-assistant':
                 return <GroundedChatView />;
             case 'complex-query':

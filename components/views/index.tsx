@@ -1,5 +1,6 @@
 import React from 'react';
 import { LiveAgent } from '../LiveAgent';
+import { OutboundAgent } from '../OutboundAgent';
 import { GroundedChat } from '../GroundedChat';
 import { ComplexQuery } from '../ComplexQuery';
 import { TtsPlayer } from '../TtsPlayer';
@@ -16,7 +17,8 @@ const ViewWrapper: React.FC<{ title: string; children: React.ReactNode }> = ({ t
     </div>
 );
 
-export const LiveAgentView: React.FC = () => <ViewWrapper title="Live AI Agent"><LiveAgent /></ViewWrapper>;
+export const LiveAgentView: React.FC = () => <ViewWrapper title="Inbound AI Agent"><LiveAgent /></ViewWrapper>;
+export const OutboundAgentView: React.FC = () => <ViewWrapper title="Outbound AI Campaign"><OutboundAgent /></ViewWrapper>;
 export const GroundedChatView: React.FC = () => <ViewWrapper title="AI Research Assistant"><GroundedChat /></ViewWrapper>;
 export const ComplexQueryView: React.FC = () => <ViewWrapper title="Complex Query Solver"><ComplexQuery /></ViewWrapper>;
 export const TtsPlayerView: React.FC = () => <ViewWrapper title="Text-to-Speech Player"><TtsPlayer /></ViewWrapper>;

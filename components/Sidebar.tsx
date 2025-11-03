@@ -1,5 +1,5 @@
 import React from 'react';
-import { OmniTechLogo, ChartPieIcon, UserGroupIcon, ArrowLeftOnRectangleIcon, PhoneIcon, BeakerIcon, DocumentTextIcon, Cog6ToothIcon, NetworkIcon, CodeBracketIcon, EnvelopeIcon, QueueListIcon } from './Icons';
+import { OmniTechLogo, ChartPieIcon, UserGroupIcon, ArrowLeftOnRectangleIcon, PhoneIcon, PhoneArrowUpRightIcon, BeakerIcon, DocumentTextIcon, Cog6ToothIcon, NetworkIcon, CodeBracketIcon, EnvelopeIcon, QueueListIcon } from './Icons';
 import { User } from '../types';
 import { View } from './DashboardLayout';
 
@@ -18,7 +18,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, setView }) => 
     ];
 
     const aiToolsNav = [
-        { name: 'Live AI Agent', icon: <PhoneIcon />, view: 'live-agent' as const },
+        { name: 'Inbound Agent', icon: <PhoneIcon />, view: 'live-agent' as const },
+        { name: 'Outbound Campaign', icon: <PhoneArrowUpRightIcon />, view: 'outbound-agent' as const },
         { name: 'Research Assistant', icon: <BeakerIcon />, view: 'research-assistant' as const },
         { name: 'Complex Query', icon: <Cog6ToothIcon />, view: 'complex-query' as const },
         { name: 'TTS Player', icon: <DocumentTextIcon />, view: 'tts-player' as const },

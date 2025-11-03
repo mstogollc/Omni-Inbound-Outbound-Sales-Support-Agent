@@ -1,7 +1,7 @@
 import React from 'react';
 import { Prospect, CallLog } from '../types';
 import { View } from './DashboardLayout';
-import { PhoneIcon, BeakerIcon, Cog6ToothIcon, DocumentTextIcon, NetworkIcon, CodeBracketIcon, EnvelopeIcon, SparklesIcon } from './Icons';
+import { PhoneIcon, PhoneArrowUpRightIcon, BeakerIcon, Cog6ToothIcon, DocumentTextIcon, NetworkIcon, CodeBracketIcon, EnvelopeIcon, SparklesIcon } from './Icons';
 
 interface DashboardViewProps {
     prospects: Prospect[];
@@ -31,7 +31,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ prospects, recentL
     const followUps = prospects.filter(p => p.status === 'Follow Up').length;
 
     const tools = [
-        { view: 'live-agent' as View, title: 'Live AI Agent', description: 'Handle inbound/outbound calls with a real-time voice agent.', icon: <PhoneIcon /> },
+        { view: 'live-agent' as View, title: 'Inbound Agent', description: 'Handle inbound calls with a real-time voice agent.', icon: <PhoneIcon /> },
+        { view: 'outbound-agent' as View, title: 'Outbound Campaign', description: 'Automate outbound calls to prospects in the queue.', icon: <PhoneArrowUpRightIcon /> },
         { view: 'research-assistant' as View, title: 'AI Research Assistant', description: 'Get answers with verifiable sources using Google Search.', icon: <BeakerIcon /> },
         { view: 'complex-query' as View, title: 'Complex Query Solver', description: 'Leverage Gemini Pro for coding, analysis, and creative tasks.', icon: <Cog6ToothIcon /> },
         { view: 'network-troubleshooter' as View, title: 'Network Troubleshooter', description: 'Diagnose connectivity and network issues with AI guidance.', icon: <NetworkIcon /> },

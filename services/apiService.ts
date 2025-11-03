@@ -79,6 +79,21 @@ export const apiService = {
         // Return a deep copy to prevent direct mutation
         return JSON.parse(JSON.stringify(MOCK_PROSPECTS));
     },
+
+    async addProspect(prospectData: Omit<Prospect, 'id' | 'status' | 'assignedTo' | 'lastContacted' | 'nextFollowUp'>): Promise<Prospect> {
+        await simulateNetwork(400);
+        const newId = MOCK_PROSPECTS.length > 0 ? Math.max(...MOCK_PROSPECTS.map(p => p.id)) + 1 : 1;
+        const newProspect: Prospect = {
+            ...prospectData,
+            id: newId,
+            status: 'Pending',
+            assignedTo: 'Sales Agent', // Default assignment
+            lastContacted: null,
+            nextFollowUp: null,
+        };
+        MOCK_PROSPECTS.unshift(newProspect); // Add to the top of the list
+        return { ...newProspect };
+    },
     
     async updateProspectStatus(prospectId: number, status: Prospect['status']): Promise<Prospect> {
         await simulateNetwork(300);

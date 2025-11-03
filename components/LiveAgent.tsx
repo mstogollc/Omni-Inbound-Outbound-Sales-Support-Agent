@@ -88,7 +88,7 @@ export const LiveAgent: React.FC = () => {
 
     const startCall = async () => {
         if (!process.env.API_KEY) {
-            addNotification("Gemini API Key is not configured.");
+            addNotification("Error: Gemini API Key is not configured in this environment.");
             return;
         }
 
@@ -152,16 +152,30 @@ export const LiveAgent: React.FC = () => {
                             audioPlaybackQueue.current.add(source);
                         }
                     },
-                    onerror: (e: ErrorEvent) => { addNotification(`Error: ${e.message}`); endCall(); },
+                    onerror: (e: ErrorEvent) => { 
+                        console.error("Live agent session error:", e);
+                        addNotification(`Error: ${e.message || 'An unknown connection error occurred.'}`); 
+                        endCall(); 
+                    },
                     onclose: () => { addNotification('Session ended by server.'); endCall(); },
                 },
             });
-        } catch (error) { addNotification(`Failed to start session: ${(error as Error).message}`); endCall(); }
+        } catch (error) {
+            let errorMessage = "An unknown error occurred. Check browser console for details.";
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else if (error) {
+                errorMessage = String(error);
+            }
+            console.error("Failed to start live session:", error);
+            addNotification(`Error: ${errorMessage}`);
+            endCall();
+        }
     };
 
     return (
         <div className="bg-gray-800/70 p-4 rounded-xl shadow-lg flex flex-col h-full">
-            <h3 className="text-lg font-semibold text-white mb-3">OmniTech Inbound Agent</h3>
+            <h3 className="text-lg font-semibold text-white mb-3">Inbound Agent</h3>
             <div ref={transcriptionContainerRef} className="flex-1 overflow-y-auto mb-4 space-y-3 p-2 bg-gray-900/50 rounded-lg min-h-[250px]">
                 {transcriptions.map((t, i) => (
                      <div key={i} className={`flex items-start gap-2 ${t.source === 'user' ? 'justify-end' : ''}`}>
